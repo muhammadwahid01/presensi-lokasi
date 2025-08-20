@@ -193,158 +193,85 @@ button.pilihSemua {
   </div>
 
 <script>
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwWhwd-c_Bi60u3u2FCRoRDweyOKJL82cAN_oMlsm5EykB2y_Aag4WQ1E35DoQbx68/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwWhwd-c_Bi60u3u2FCRoRDweyOKJL82cAN_oMlsm5EykB2y_Aag4WQ1E35DoQbx68/exec";
 
-let CURRENT_USER = null;
-let ALL_STUDENTS = [];
-let SELECT_ALL = false;
+// fungsi umum untuk panggil API
+async function callAPI(payload) {
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" }
+    });
 
-/* === Helper untuk POST ke Apps Script === */
-async function callAPI(action, payload={}) {
-  const res = await fetch(WEB_APP_URL, {
-    method: "POST",
-    body: JSON.stringify({ action, ...payload }),
-    headers: { "Content-Type": "application/json" }
-  });
-  return await res.json();
-}
+    const text = await res.text();  // Apps Script balikin text/html
+    console.log("Raw response:", text);
 
-/* === LOGIN === */
-async function doLogin() {
-  const username = document.getElementById("username").value.trim();
-  const password = document.getElementById("password").value;
-  if (!username || !password) { alert("Isi semua field."); return; }
-
-  const res = await callAPI("login", { username, password });
-  if (!res.success) { alert(res.message); return; }
-
-  CURRENT_USER = res;
-  document.getElementById("loginCard").classList.add("hidden");
-  if (res.role === "admin") {
-    document.getElementById("adminCard").classList.remove("hidden");
-    loadStudents();
-  } else {
-    document.getElementById("studentCard").classList.remove("hidden");
-    document.getElementById("infoUser").innerText = `Halo, ${res.nama} (${res.kelas})`;
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { success: false, message: "Response tidak valid" };
+    }
+  } catch (err) {
+    console.error("Fetch error:", err);
+    return { success: false, message: err.message };
   }
 }
 
-/* === TOGGLE UPLOAD === */
+// ---------------- LOGIN ----------------
+async function doLogin() {
+  const username = document.getElementById("username").value.trim();
+  const password = document.getElementById("password").value.trim();
+
+  const res = await callAPI({ action: "login", username, password });
+
+  if (res.success) {
+    if (res.role === "admin") {
+      document.getElementById("loginCard").classList.add("hidden");
+      document.getElementById("adminCard").classList.remove("hidden");
+    } else {
+      document.getElementById("loginCard").classList.add("hidden");
+      document.getElementById("studentCard").classList.remove("hidden");
+      document.getElementById("infoUser").innerText = "Halo, " + res.username;
+    }
+  } else {
+    alert("Login gagal: " + res.message);
+  }
+}
+
+// ---------------- PRESENSI SISWA ----------------
 function toggleUpload() {
   const status = document.getElementById("status").value;
   document.getElementById("hadirDiv").classList.toggle("hidden", status !== "hadir");
   document.getElementById("tidakDiv").classList.toggle("hidden", status !== "tidak hadir");
 }
 
-/* === PREVIEW FILE === */
-function previewFile(input, previewId) {
-  const file = input.files[0];
-  const box = document.getElementById(previewId);
-  if (!file) { box.innerHTML = "Tidak ada file"; return; }
-  if (file.type.startsWith("image/")) {
-    const reader = new FileReader();
-    reader.onload = e => box.innerHTML = `<img src="${e.target.result}" style="max-width:100%">`;
-    reader.readAsDataURL(file);
-  } else {
-    box.textContent = "📄 " + file.name;
-  }
-}
-
-/* === SUBMIT PRESENSI SISWA === */
 async function submitPresensi() {
-  if (!CURRENT_USER) return;
   const status = document.getElementById("status").value;
-  if (!status) { alert("Pilih status."); return; }
+  const alasan = document.getElementById("alasan")?.value || "";
 
-  const fileInput = (status==="hadir") ? document.getElementById("selfie") : document.getElementById("dokumen");
-  const alasan = (status==="tidak hadir") ? document.getElementById("alasan").value : "-";
-  if (fileInput.files.length === 0) { alert("File wajib diunggah."); return; }
+  const res = await callAPI({ action: "submitPresensi", status, alasan });
 
-  const file = fileInput.files[0];
-  const reader = new FileReader();
-  reader.onloadend = async () => {
-    const fileData = reader.result;
-
-    let lat=null, lng=null;
-    if (status==="hadir") {
-      try {
-        const pos = await new Promise((resolve,reject)=>
-          navigator.geolocation.getCurrentPosition(resolve,reject));
-        lat = pos.coords.latitude; lng = pos.coords.longitude;
-      } catch(e) { alert("Lokasi wajib diizinkan."); return; }
-    }
-
-    const res = await callAPI("submitPresensi", {
-      fileData, status, alasan,
-      username: CURRENT_USER.username,
-      nama: CURRENT_USER.nama,
-      kelas: CURRENT_USER.kelas,
-      lat, lng
-    });
-
-    const el = document.getElementById("msg");
-    el.textContent = res.message;
-    el.style.color = res.success ? "green":"red";
-  };
-  reader.readAsDataURL(file);
+  document.getElementById("msg").innerText = res.success
+    ? "Presensi berhasil"
+    : "Gagal: " + res.message;
 }
 
-/* === ADMIN PANEL === */
-async function loadStudents() {
-  const res = await callAPI("getAllStudents");
-  ALL_STUDENTS = res || [];
-  renderStudents(ALL_STUDENTS);
-}
-
-function renderStudents(list) {
-  const wrap = document.getElementById("studentList");
-  wrap.innerHTML = list.map(s => `
-    <div>
-      <b>${s.nama}</b> (${s.username} • ${s.kelas})
-      <select data-username="${s.username}" class="statusSel">
-        <option value="">-- Status --</option>
-        <option value="hadir">Hadir</option>
-        <option value="tidak hadir">Tidak Hadir</option>
-      </select>
-      <input type="text" class="alasanInp" data-username="${s.username}" placeholder="Alasan (jika tidak hadir)">
-      <input type="checkbox" class="pickChk" data-username="${s.username}">
-    </div>
-  `).join("");
-}
-
-function filterStudents() {
-  const q = document.getElementById("searchBox").value.toLowerCase();
-  renderStudents(ALL_STUDENTS.filter(s =>
-    s.nama.toLowerCase().includes(q) ||
-    s.username.toLowerCase().includes(q) ||
-    s.kelas.toLowerCase().includes(q)
-  ));
-}
-
-function toggleSelectAll() {
-  SELECT_ALL=!SELECT_ALL;
-  document.querySelectorAll(".pickChk").forEach(chk=>chk.checked=SELECT_ALL);
-}
-
+// ---------------- ADMIN ----------------
 async function submitPresensiAdmin() {
-  const picks = [...document.querySelectorAll(".pickChk")].filter(x=>x.checked);
-  if (!picks.length) { alert("Pilih minimal satu siswa."); return; }
-  const payload = [];
-  picks.forEach(chk=>{
-    const u = chk.dataset.username;
-    const statusSel = document.querySelector(`.statusSel[data-username="${u}"]`);
-    const alasanInp = document.querySelector(`.alasanInp[data-username="${u}"]`);
-    if (!statusSel.value) return;
-    if (statusSel.value==="tidak hadir" && !alasanInp.value.trim()) return;
-    payload.push({ username:u, status:statusSel.value, alasan:alasanInp.value });
+  const res = await callAPI({ action: "submitPresensiAdmin" });
+  document.getElementById("msgAdmin").innerText = res.success
+    ? "Data berhasil disimpan"
+    : "Gagal: " + res.message;
+}
+
+// contoh: filter siswa (opsional)
+function filterStudents() {
+  const val = document.getElementById("searchBox").value.toLowerCase();
+  const list = document.querySelectorAll(".student-row");
+  list.forEach(row => {
+    row.style.display = row.innerText.toLowerCase().includes(val) ? "" : "none";
   });
-
-  if (!payload.length) { alert("Lengkapi status/alasan."); return; }
-
-  const res = await callAPI("submitPresensiAdmin",{ payload });
-  const el = document.getElementById("msgAdmin");
-  el.textContent = res.message;
-  el.style.color = res.success ? "green":"red";
 }
 </script>
 </body>
