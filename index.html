@@ -1,10 +1,135 @@
 <!DOCTYPE html>
-<html lang="id">
+<html>
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>Presensi Siswa</title>
-  <link rel="stylesheet" href="style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    /* --- Global Reset --- */
+body {
+  font-family: Arial, sans-serif;
+  margin: 0; padding: 20px;
+  background: #f5f5f5;
+  font-size: 16px; /* lebih nyaman default */
+}
+
+.container {
+  max-width: 720px; margin: 0 auto;
+}
+
+/* --- Card Box --- */
+.card {
+  background: #fff; padding: 24px;
+  border-radius: 16px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+  margin-bottom: 20px;
+}
+
+h2 {
+  text-align: center; margin: 0 0 16px;
+  color: #2c3e50; font-size: 1.4rem;
+}
+
+label {
+  display: block; margin-top: 12px;
+  font-weight: 600; color: #333;
+}
+
+/* --- Form Elements --- */
+select, input[type="text"], input[type="password"], 
+input[type="file"], button {
+  width: 100%; padding: 14px; margin-top: 6px;
+  border: 1px solid #dcdcdc; border-radius: 12px;
+  font-size: 1rem; box-sizing: border-box;
+  background: #fff;
+}
+
+button {
+  background: #2d89ef; color: #fff;
+  font-weight: 700; border: none;
+  cursor: pointer; transition: 0.2s;
+  margin-top: 16px; border-radius: 12px;
+}
+
+button:hover { background: #1b5fab; }
+
+/* --- Info & Utilities --- */
+.hidden { display: none; }
+.info {
+  text-align: center; font-weight: 600; color: #555;
+  background: #f7f9fc; border-radius: 12px;
+  padding: 10px; margin-bottom: 10px;
+}
+
+/* --- Student list grid --- */
+.student-grid {
+  display: grid;
+  grid-template-columns: 1fr 140px 1fr;
+  gap: 10px; align-items: center;
+}
+
+/* --- Preview Box --- */
+.previewBox {
+  margin-top: 12px; text-align: center;
+  background: #fafafa; border: 1px dashed #ddd;
+  border-radius: 12px; padding: 10px;
+  font-size: 0.9rem;
+}
+
+.previewBox img {
+  max-width: 100%; border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+button.pilihSemua {
+        max-width: 200px; margin-top: 5px;
+      }
+
+      .search {
+        display:flex; gap:8px; align-items:center; margin: 5px 0 12px;
+      }
+      .search input {
+        flex:1; border-radius: 12px;
+      }
+      .divider {
+        height:1px; background:#eee; margin:12px 0;
+      }
+
+/* --- Responsive --- */
+@media (max-width: 768px) {
+  body { padding: 12px; font-size: 15px; }
+
+  .card { padding: 18px; border-radius: 12px; }
+
+  h2 { font-size: 1.2rem; }
+
+  .student-grid { grid-template-columns: 1fr; }
+
+  button, input, select {
+    font-size: 1rem;
+    padding: 12px;
+  }
+
+  button.pilihSemua {
+    max-width: 100%; /* full width di HP */
+  }
+
+  .search {
+    flex-direction: column; /* tumpuk input & tombol */
+    gap: 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  body { font-size: 14px; }
+
+  h2 { font-size: 1.1rem; }
+
+  label { font-size: 0.9rem; }
+
+  .previewBox { font-size: 0.8rem; }
+}
+  </style>
 </head>
 <body>
   <div class="container">
@@ -19,9 +144,9 @@
       <button onclick="doLogin()">Masuk</button>
     </div>
 
-    <!-- SISWA -->
+    <!-- FORM SISWA -->
     <div class="card hidden" id="studentCard">
-      <h2>Presensi</h2>
+      <h2>Presensi Siswa</h2>
       <div class="info" id="infoUser"></div>
 
       <label>Status</label>
@@ -32,9 +157,9 @@
       </select>
 
       <div id="hadirDiv" class="hidden">
-        <label>Selfie</label>
+        <label>Ambil Selfie</label>
         <input type="file" id="selfie" accept="image/*" capture="user" onchange="previewFile(this,'previewHadir')">
-        <div id="previewHadir" class="previewBox">Pratinjau akan tampil disini</div>
+        <div id="previewHadir" class="previewBox">Pratinjau selfie</div>
       </div>
 
       <div id="tidakDiv" class="hidden">
@@ -49,23 +174,178 @@
         <div id="previewDokumen" class="previewBox">Pratinjau dokumen</div>
       </div>
 
-      <button onclick="submitPresensi()">Kirim</button>
+      <button onclick="submitPresensi()">Kirim Presensi</button>
       <div id="msg"></div>
     </div>
 
-    <!-- ADMIN -->
+    <!-- PANEL ADMIN -->
     <div class="card hidden" id="adminCard">
       <h2>Admin Panel</h2>
-      <div class="info">Login sebagai Admin</div>
+      <div class="info">Login sebagai <span class="badge">Admin</span></div>
       <div class="search">
         <input type="text" id="searchBox" placeholder="Cari siswa..." oninput="filterStudents()">
+        <button onclick="toggleSelectAll()">Pilih Semua</button>
       </div>
       <div id="studentList"></div>
-      <button onclick="submitPresensiAdmin()">Simpan</button>
+      <button onclick="submitPresensiAdmin()">Simpan Presensi</button>
       <div id="msgAdmin"></div>
     </div>
-
   </div>
-<script src="app.js"></script>
+
+<script>
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwWhwd-c_Bi60u3u2FCRoRDweyOKJL82cAN_oMlsm5EykB2y_Aag4WQ1E35DoQbx68/exec";
+
+let CURRENT_USER = null;
+let ALL_STUDENTS = [];
+let SELECT_ALL = false;
+
+/* === Helper untuk POST ke Apps Script === */
+async function callAPI(action, payload={}) {
+  const res = await fetch(WEB_APP_URL, {
+    method: "POST",
+    body: JSON.stringify({ action, ...payload }),
+    headers: { "Content-Type": "application/json" }
+  });
+  return await res.json();
+}
+
+/* === LOGIN === */
+async function doLogin() {
+  const username = document.getElementById("username").value.trim();
+  const password = document.getElementById("password").value;
+  if (!username || !password) { alert("Isi semua field."); return; }
+
+  const res = await callAPI("login", { username, password });
+  if (!res.success) { alert(res.message); return; }
+
+  CURRENT_USER = res;
+  document.getElementById("loginCard").classList.add("hidden");
+  if (res.role === "admin") {
+    document.getElementById("adminCard").classList.remove("hidden");
+    loadStudents();
+  } else {
+    document.getElementById("studentCard").classList.remove("hidden");
+    document.getElementById("infoUser").innerText = `Halo, ${res.nama} (${res.kelas})`;
+  }
+}
+
+/* === TOGGLE UPLOAD === */
+function toggleUpload() {
+  const status = document.getElementById("status").value;
+  document.getElementById("hadirDiv").classList.toggle("hidden", status !== "hadir");
+  document.getElementById("tidakDiv").classList.toggle("hidden", status !== "tidak hadir");
+}
+
+/* === PREVIEW FILE === */
+function previewFile(input, previewId) {
+  const file = input.files[0];
+  const box = document.getElementById(previewId);
+  if (!file) { box.innerHTML = "Tidak ada file"; return; }
+  if (file.type.startsWith("image/")) {
+    const reader = new FileReader();
+    reader.onload = e => box.innerHTML = `<img src="${e.target.result}" style="max-width:100%">`;
+    reader.readAsDataURL(file);
+  } else {
+    box.textContent = "📄 " + file.name;
+  }
+}
+
+/* === SUBMIT PRESENSI SISWA === */
+async function submitPresensi() {
+  if (!CURRENT_USER) return;
+  const status = document.getElementById("status").value;
+  if (!status) { alert("Pilih status."); return; }
+
+  const fileInput = (status==="hadir") ? document.getElementById("selfie") : document.getElementById("dokumen");
+  const alasan = (status==="tidak hadir") ? document.getElementById("alasan").value : "-";
+  if (fileInput.files.length === 0) { alert("File wajib diunggah."); return; }
+
+  const file = fileInput.files[0];
+  const reader = new FileReader();
+  reader.onloadend = async () => {
+    const fileData = reader.result;
+
+    let lat=null, lng=null;
+    if (status==="hadir") {
+      try {
+        const pos = await new Promise((resolve,reject)=>
+          navigator.geolocation.getCurrentPosition(resolve,reject));
+        lat = pos.coords.latitude; lng = pos.coords.longitude;
+      } catch(e) { alert("Lokasi wajib diizinkan."); return; }
+    }
+
+    const res = await callAPI("submitPresensi", {
+      fileData, status, alasan,
+      username: CURRENT_USER.username,
+      nama: CURRENT_USER.nama,
+      kelas: CURRENT_USER.kelas,
+      lat, lng
+    });
+
+    const el = document.getElementById("msg");
+    el.textContent = res.message;
+    el.style.color = res.success ? "green":"red";
+  };
+  reader.readAsDataURL(file);
+}
+
+/* === ADMIN PANEL === */
+async function loadStudents() {
+  const res = await callAPI("getAllStudents");
+  ALL_STUDENTS = res || [];
+  renderStudents(ALL_STUDENTS);
+}
+
+function renderStudents(list) {
+  const wrap = document.getElementById("studentList");
+  wrap.innerHTML = list.map(s => `
+    <div>
+      <b>${s.nama}</b> (${s.username} • ${s.kelas})
+      <select data-username="${s.username}" class="statusSel">
+        <option value="">-- Status --</option>
+        <option value="hadir">Hadir</option>
+        <option value="tidak hadir">Tidak Hadir</option>
+      </select>
+      <input type="text" class="alasanInp" data-username="${s.username}" placeholder="Alasan (jika tidak hadir)">
+      <input type="checkbox" class="pickChk" data-username="${s.username}">
+    </div>
+  `).join("");
+}
+
+function filterStudents() {
+  const q = document.getElementById("searchBox").value.toLowerCase();
+  renderStudents(ALL_STUDENTS.filter(s =>
+    s.nama.toLowerCase().includes(q) ||
+    s.username.toLowerCase().includes(q) ||
+    s.kelas.toLowerCase().includes(q)
+  ));
+}
+
+function toggleSelectAll() {
+  SELECT_ALL=!SELECT_ALL;
+  document.querySelectorAll(".pickChk").forEach(chk=>chk.checked=SELECT_ALL);
+}
+
+async function submitPresensiAdmin() {
+  const picks = [...document.querySelectorAll(".pickChk")].filter(x=>x.checked);
+  if (!picks.length) { alert("Pilih minimal satu siswa."); return; }
+  const payload = [];
+  picks.forEach(chk=>{
+    const u = chk.dataset.username;
+    const statusSel = document.querySelector(`.statusSel[data-username="${u}"]`);
+    const alasanInp = document.querySelector(`.alasanInp[data-username="${u}"]`);
+    if (!statusSel.value) return;
+    if (statusSel.value==="tidak hadir" && !alasanInp.value.trim()) return;
+    payload.push({ username:u, status:statusSel.value, alasan:alasanInp.value });
+  });
+
+  if (!payload.length) { alert("Lengkapi status/alasan."); return; }
+
+  const res = await callAPI("submitPresensiAdmin",{ payload });
+  const el = document.getElementById("msgAdmin");
+  el.textContent = res.message;
+  el.style.color = res.success ? "green":"red";
+}
+</script>
 </body>
 </html>
