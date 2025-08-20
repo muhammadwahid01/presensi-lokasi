@@ -195,7 +195,7 @@ button.pilihSemua {
 <script>
 const API_URL = "https://script.google.com/macros/s/AKfycbwWhwd-c_Bi60u3u2FCRoRDweyOKJL82cAN_oMlsm5EykB2y_Aag4WQ1E35DoQbx68/exec";
 
-// fungsi umum untuk panggil API
+// ========== UTIL ========== //
 async function callAPI(payload) {
   try {
     const res = await fetch(API_URL, {
@@ -203,8 +203,7 @@ async function callAPI(payload) {
       body: JSON.stringify(payload),
       headers: { "Content-Type": "application/json" }
     });
-
-    const text = await res.text();  // Apps Script balikin text/html
+    const text = await res.text();
     console.log("Raw response:", text);
 
     try {
@@ -218,61 +217,151 @@ async function callAPI(payload) {
   }
 }
 
-// ---------------- LOGIN ----------------
+function saveUser(user) {
+  localStorage.setItem("currentUser", JSON.stringify(user));
+}
+function getUser() {
+  return JSON.parse(localStorage.getItem("currentUser") || "null");
+}
+function logout() {
+  localStorage.removeItem("currentUser");
+  location.reload();
+}
+
+// ========== LOGIN ========== //
 async function doLogin() {
   const username = document.getElementById("username").value.trim();
   const password = document.getElementById("password").value.trim();
 
   const res = await callAPI({ action: "login", username, password });
+  if (!res.success) return alert("Login gagal: " + res.message);
 
-  if (res.success) {
-    if (res.role === "admin") {
-      document.getElementById("loginCard").classList.add("hidden");
-      document.getElementById("adminCard").classList.remove("hidden");
-    } else {
-      document.getElementById("loginCard").classList.add("hidden");
-      document.getElementById("studentCard").classList.remove("hidden");
-      document.getElementById("infoUser").innerText = "Halo, " + res.username;
-    }
+  saveUser(res);
+
+  document.getElementById("loginCard").classList.add("hidden");
+  if (res.role === "admin") {
+    document.getElementById("adminCard").classList.remove("hidden");
+    loadStudentList();
   } else {
-    alert("Login gagal: " + res.message);
+    document.getElementById("studentCard").classList.remove("hidden");
+    document.getElementById("infoUser").innerText = "Halo, " + res.nama;
   }
 }
 
-// ---------------- PRESENSI SISWA ----------------
+// ========== SISWA PRESENSI ========== //
 function toggleUpload() {
   const status = document.getElementById("status").value;
-  document.getElementById("hadirDiv").classList.toggle("hidden", status !== "hadir");
-  document.getElementById("tidakDiv").classList.toggle("hidden", status !== "tidak hadir");
+  document.getElementById("hadirDiv").classList.toggle("hidden", status !== "Hadir");
+  document.getElementById("tidakDiv").classList.toggle("hidden", status !== "Tidak Hadir");
 }
 
 async function submitPresensi() {
+  const user = getUser();
+  if (!user) return alert("Session habis, silakan login lagi");
+
   const status = document.getElementById("status").value;
   const alasan = document.getElementById("alasan")?.value || "";
+  let lokasi = null;
 
-  const res = await callAPI({ action: "submitPresensi", status, alasan });
+  if (status === "Hadir" && navigator.geolocation) {
+    lokasi = await new Promise(resolve => {
+      navigator.geolocation.getCurrentPosition(
+        pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => resolve(null)
+      );
+    });
+  }
+
+  // file selfie
+  const fileInput = document.getElementById("selfie");
+  let fileBase64 = "";
+  if (fileInput && fileInput.files.length > 0) {
+    const file = fileInput.files[0];
+    fileBase64 = await toBase64(file);
+  }
+
+  const res = await callAPI({
+    action: "submitPresensi",
+    username: user.username,
+    status,
+    alasan,
+    lokasi,
+    selfie: fileBase64
+  });
 
   document.getElementById("msg").innerText = res.success
     ? "Presensi berhasil"
     : "Gagal: " + res.message;
 }
 
-// ---------------- ADMIN ----------------
+function toBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result.split(",")[1]);
+    reader.onerror = err => reject(err);
+  });
+}
+
+// ========== ADMIN ========== //
+async function loadStudentList() {
+  const res = await callAPI({ action: "getStudentList" });
+  if (!res.success) return alert("Gagal ambil daftar siswa");
+
+  const container = document.getElementById("studentList");
+  container.innerHTML = "";
+  res.data.forEach(s => {
+    const row = document.createElement("div");
+    row.className = "student-row";
+    row.innerHTML = `
+      <label>
+        <input type="checkbox" value="${s.username}" data-nama="${s.nama}" data-kelas="${s.kelas}"> 
+        ${s.nama} (${s.kelas})
+      </label>
+      <select class="status-select">
+        <option value="Hadir">Hadir</option>
+        <option value="Tidak Hadir">Tidak Hadir</option>
+      </select>
+    `;
+    container.appendChild(row);
+  });
+}
+
 async function submitPresensiAdmin() {
-  const res = await callAPI({ action: "submitPresensiAdmin" });
+  const checkboxes = document.querySelectorAll("#studentList input[type=checkbox]:checked");
+  if (checkboxes.length === 0) return alert("Pilih minimal satu siswa");
+
+  const updates = [];
+  checkboxes.forEach(cb => {
+    const status = cb.parentElement.parentElement.querySelector(".status-select").value;
+    updates.push({
+      username: cb.value,
+      nama: cb.dataset.nama,
+      kelas: cb.dataset.kelas,
+      status
+    });
+  });
+
+  const res = await callAPI({ action: "submitPresensiAdmin", updates });
   document.getElementById("msgAdmin").innerText = res.success
-    ? "Data berhasil disimpan"
+    ? "Presensi admin berhasil disimpan"
     : "Gagal: " + res.message;
 }
 
-// contoh: filter siswa (opsional)
-function filterStudents() {
-  const val = document.getElementById("searchBox").value.toLowerCase();
-  const list = document.querySelectorAll(".student-row");
-  list.forEach(row => {
-    row.style.display = row.innerText.toLowerCase().includes(val) ? "" : "none";
-  });
-}
+// ========== ON LOAD ========== //
+window.addEventListener("load", () => {
+  const user = getUser();
+  if (user) {
+    document.getElementById("loginCard").classList.add("hidden");
+    if (user.role === "admin") {
+      document.getElementById("adminCard").classList.remove("hidden");
+      loadStudentList();
+    } else {
+      document.getElementById("studentCard").classList.remove("hidden");
+      document.getElementById("infoUser").innerText = "Halo, " + user.nama;
+    }
+  }
+});
 </script>
 </body>
 </html>
